@@ -34,12 +34,14 @@ data "aws_ami" "ubuntu" {
 # Create a VPC
 # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc
 resource "aws_vpc" "web" {
-  cidr_block           = "10.0.0.0/16"
-	# enable dns enable_dns_hostnames
+  cidr_block = "10.0.0.0/16"
+  # enable dns enable_dns_hostnames
+  enable_dns_support   = true
+  enable_dns_hostnames = true
 
   tags = {
-    Name    = "project_vpc"
-		# add project name using local
+    Name = "project_vpc"
+    # add project name using local
   }
 }
 
@@ -48,36 +50,41 @@ resource "aws_vpc" "web" {
 # To use the free tier t2.micro ec2 instance you have to declare an AZ
 # Some AZs do not support this instance type
 resource "aws_subnet" "web" {
-  vpc_id                  = aws_vpc.web.id
-  cidr_block              = "10.0.1.0/24"
-	# set availability zone
-	# add public ip on launch
+  vpc_id     = aws_vpc.web.id
+  cidr_block = "10.0.1.0/24"
+  # set availability zone
+  # add public ip on launch
+  availability_zone       = "us-west-2a"
+  map_public_ip_on_launch = true
 
   tags = {
     Name = "Web"
-		# add project name using local
+    # add project name using local
+    Project = local.project_name
   }
 }
 
 # Create internet gateway for VPC
 # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/internet_gateway
 resource "aws_internet_gateway" "web-gw" {
-	# add vpc
+  # add vpc
+  vpc_id = aws_vpc.web.id
 
   tags = {
     Name = "Web"
-		# add project name using local
+    # add project name using local
   }
 }
 
 # create route table for web VPC 
 # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/route_table
 resource "aws_route_table" "web" {
-	# add vpc 
+  # add vpc 
+  vpc_id = aws_vpc.web.id
 
   tags = {
     Name = "web-route"
-		# add project name using local
+    # add project name using local
   }
 }
 
@@ -86,12 +93,14 @@ resource "aws_route_table" "web" {
 resource "aws_route" "default_route" {
   route_table_id         = aws_route_table.web.id
   destination_cidr_block = "0.0.0.0/0"
-	# add gateway id
+  # add gateway id
+  gateway_id = aws_internet_gateway.web-gw.id
 }
 
 # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/route_table_association
 resource "aws_route_table_association" "web" {
-	# add subnet id
+  # add subnet id
+  subnet_id      = aws_subnet.web.id
   route_table_id = aws_route_table.web.id
 }
 
@@ -99,11 +108,13 @@ resource "aws_route_table_association" "web" {
 resource "aws_security_group" "web" {
   name        = "allow_ssh"
   description = "allow ssh from home and work"
-	# add vpc id
+  # add vpc id
+  vpc_id = aws_vpc.web.id
 
   tags = {
     Name = "Web"
-		# add project name using local
+    # add project name using local
+    Project = local.project_name
   }
 }
 
@@ -113,6 +124,10 @@ resource "aws_vpc_security_group_ingress_rule" "web-ssh" {
   security_group_id = aws_security_group.web.id
 
   # allow ssh anywhere
+  from_port   = 22
+  to_port     = 22
+  ip_protocol = "tcp"
+  cidr_ipv4   = "0.0.0.0/0" # Allows SSH from anywhere
 }
 
 # allow http
@@ -120,7 +135,11 @@ resource "aws_vpc_security_group_ingress_rule" "web-ssh" {
 resource "aws_vpc_security_group_ingress_rule" "web-http" {
   security_group_id = aws_security_group.web.id
 
-	# allow http anywhere
+  # allow http anywhere
+  from_port   = 80
+  to_port     = 80
+  ip_protocol = "tcp"
+  cidr_ipv4   = "0.0.0.0/0" # Allows HTTP from anywhere
 }
 
 # allow all out
@@ -144,15 +163,22 @@ resource "aws_vpc_security_group_egress_rule" "web-egress" {
 # create the ec2 instance
 # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance
 resource "aws_instance" "web" {
-	# use ami provided by data block above
+  # use ami provided by data block above
   # set instance type
-	# add user datat for cloud-config file in scripts directory
-	# add vpc security group 
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = "t2.micro"
+  # add user datat for cloud-config file in scripts directory
+  # add vpc security group 
+  vpc_security_group_ids = [aws_security_group.web.id]
+  key_name               = "bcitkey"
   subnet_id              = aws_subnet.web.id
+
+  user_data = file("cloud-config.yaml")
 
   tags = {
     Name = "Web"
-		# add project name using local
+    # add project name using local
+    Project = local.project_name
   }
 }
 

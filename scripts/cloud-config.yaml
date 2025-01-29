@@ -1,9 +1,0 @@
-#cloud-config
-users:
-  - name: web
-    primary_group: web
-    groups: wheel
-    shell: /bin/bash
-    sudo: ['ALL=(ALL) NOPASSWD:ALL']
-    ssh-authorized-keys:
-      - <public-key>
